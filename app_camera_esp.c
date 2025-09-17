@@ -13,10 +13,11 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "app_camera_esp.h"
 #include <Arduino.h>
+#include "app_camera_esp.h"
 #include "esp_camera.h"
 #include "esp_log.h"
+#include "esp_err.h"
 
 static const char *TAG = "app_camera_esp";
 
@@ -55,16 +56,22 @@ int app_camera_init() {
     config.pixel_format = CAMERA_PIXEL_FORMAT,     // app_camera_esp.h থেকে Setect করতে হবে
     config.frame_size   = CAMERA_FRAME_SIZE,      // app_camera_esp.h থেকে Setect করতে হবে
     config.jpeg_quality = 12;                   // only used for JPEG
-    config.fb_count     = 2;                   // double buffer
+    config.fb_count     = 1;                   // double buffer
     config.grab_mode = CAMERA_GRAB_WHEN_EMPTY;
     config.fb_location = CAMERA_FB_IN_PSRAM; // store in PSRAM if available
 
     // camera init
+
+    printf("Free heap before camera init: %d\n", esp_get_free_heap_size()); // init আগে মেমোরি দেখা যাবে
+
+    // camera init
     esp_err_t err = esp_camera_init(&config);
     if (err != ESP_OK) {
-      ESP_LOGE(TAG, "Camera init failed with error 0x%x", err);
+      printf("Camera init failed with error 0x%X\n", err);
       return -1;
     }
+
+    printf("Free heap after camera init: %d bytes\n", esp_get_free_heap_size()); // init পরে মেমোরি দেখা যাবে 
 
     // Sensor adjustments
     sensor_t *s = esp_camera_sensor_get();
@@ -75,7 +82,7 @@ int app_camera_init() {
         s->set_framesize(s, CAMERA_FRAME_SIZE);
     }
 
-    ESP_LOGI(TAG, "Camera initialized successfully! 2");
+    printf("Camera initialized successfully!\n");
     return 0;
 }
 
