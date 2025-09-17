@@ -13,9 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <Arduino.h>
-
 #include "app_camera_esp.h"
+#include <Arduino.h>
 #include "esp_camera.h"
 #include "esp_log.h"
 
@@ -56,27 +55,9 @@ int app_camera_init() {
     config.pixel_format = CAMERA_PIXEL_FORMAT     // app_camera_esp.h থেকে Setect করতে হবে
     config.frame_size   = CAMERA_FRAME_SIZE      // app_camera_esp.h থেকে Setect করতে হবে
     config.jpeg_quality = 12;                   // only used for JPEG
-    config.fb_count     = 1;                   // double buffer
+    config.fb_count     = 2;                   // double buffer
     config.grab_mode = CAMERA_GRAB_WHEN_EMPTY;
     config.fb_location = CAMERA_FB_IN_PSRAM; // store in PSRAM if available
-
-    // if PSRAM IC present, init with UXGA resolution and higher JPEG quality
-   //                      for larger pre-allocated frame buffer.
-    if (config.pixel_format == PIXFORMAT_JPEG) {
-      if (psramFound()) {
-        config.jpeg_quality = 10;
-        config.fb_count = 2;
-        config.grab_mode = CAMERA_GRAB_LATEST;
-      } else {
-        // Limit the frame size when PSRAM is not available
-        config.frame_size = FRAMESIZE_SVGA;
-        config.fb_location = CAMERA_FB_IN_DRAM;
-      }
-
-    } else {
-      // Best option for face detection/recognition
-      config.frame_size = FRAMESIZE_240X240;
-    }
 
     // camera init
     esp_err_t err = esp_camera_init(&config);
@@ -85,20 +66,16 @@ int app_camera_init() {
       return -1;
     }
 
-    // Get sensor object to adjust parameters
+    // Sensor adjustments
     sensor_t *s = esp_camera_sensor_get();
-    // initial sensors are flipped vertically and colors are a bit saturated
-    if (s->id.PID == OV3660_PID) {
-      s->set_vflip(s, 1);        // flip it back
-      s->set_brightness(s, 1);   // up the brightness just a bit
-      s->set_saturation(s, -2);  // lower the saturation
-    }
-    // drop down frame size for higher initial frame rate
-    if (config.pixel_format == PIXFORMAT_JPEG) {
-      s->set_framesize(s, FRAMESIZE_QVGA);
+    if (s) {
+        s->set_vflip(s, 1);
+        s->set_brightness(s, 1);
+        s->set_saturation(s, -2);
+        s->set_framesize(s, CAMERA_FRAME_SIZE);
     }
 
+    ESP_LOGI(TAG, "Camera initialized successfully! 2");
     return 0;
-
 }
 
