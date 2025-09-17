@@ -21,7 +21,6 @@ limitations under the License.
 
 #include <Arduino.h>
 #include "tensorflow/lite/c/common.h"
-#include "detection_responder.h"
 #include "image_provider.h"
 #include "esp_main.h"
 #include "esp_log.h"
