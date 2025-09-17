@@ -41,7 +41,7 @@ limitations under the License.
  * FRAMESIZE_CIF      // 400x296
  * FRAMESIZE_VGA      // 640x480
  */
-#define CAMERA_FRAME_SIZE FRAMESIZE_QVGA     // 320x240
+#define CAMERA_FRAME_SIZE FRAMESIZE_QQVGA    // 160x120
 
 // ================= CAMERA MODEL MANUAL SELECTION =================
 // Uncomment ONLY one camera model before compiling:
