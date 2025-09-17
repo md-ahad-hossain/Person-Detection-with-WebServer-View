@@ -237,7 +237,3 @@ static inline int esp_cli_init() {
     cli_started = 1;
     return 0;
 }
-
-#ifdef __cplusplus
-}
-#endif
