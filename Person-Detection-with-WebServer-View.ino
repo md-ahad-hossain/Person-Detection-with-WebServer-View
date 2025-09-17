@@ -15,6 +15,7 @@ limitations under the License.
 #include <WiFi.h>
 #include <WiFiManager.h>
 
+#include "app_camera_esp.h"
 #include "esp_camera.h"
 #include "main_functions.h"
 
@@ -59,6 +60,7 @@ constexpr int scratchBufSize = 0;
 #endif
 // An area of memory to use for input, output, and intermediate arrays.
 constexpr int kTensorArenaSize = 81 * 1024 + scratchBufSize;
+
 static uint8_t *tensor_arena;//[kTensorArenaSize]; // Maybe we should move this to external
 }  // namespace
 
