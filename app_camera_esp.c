@@ -52,8 +52,8 @@ int app_camera_init() {
 
     // Camera settings
     config.xclk_freq_hz = 20000000;                // 20 MHz XCLK
-    config.pixel_format = CAMERA_PIXEL_FORMAT     // app_camera_esp.h থেকে Setect করতে হবে
-    config.frame_size   = CAMERA_FRAME_SIZE      // app_camera_esp.h থেকে Setect করতে হবে
+    config.pixel_format = CAMERA_PIXEL_FORMAT,     // app_camera_esp.h থেকে Setect করতে হবে
+    config.frame_size   = CAMERA_FRAME_SIZE,      // app_camera_esp.h থেকে Setect করতে হবে
     config.jpeg_quality = 12;                   // only used for JPEG
     config.fb_count     = 2;                   // double buffer
     config.grab_mode = CAMERA_GRAB_WHEN_EMPTY;
