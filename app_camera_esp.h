@@ -29,7 +29,7 @@ limitations under the License.
  * PIXFORMAT_JPEG      // JPEG/COMPRESSED
  * PIXFORMAT_RGB888    // 3BPP/RGB888
  */
-#define CAMERA_PIXEL_FORMAT PIXFORMAT_GRAYSCALE // 1BPP/GRAYSCALE
+#define CAMERA_PIXEL_FORMAT PIXFORMAT_RGB565    // 2BPP/RGB565
 
 /*
  * FRAMESIZE_96X96    // 96x96
@@ -41,7 +41,7 @@ limitations under the License.
  * FRAMESIZE_CIF      // 400x296
  * FRAMESIZE_VGA      // 640x480
  */
-#define CAMERA_FRAME_SIZE FRAMESIZE_96X96    // 96x96
+#define CAMERA_FRAME_SIZE FRAMESIZE_QVGA     // 320x240
 
 // ================= CAMERA MODEL MANUAL SELECTION =================
 // Uncomment ONLY one camera model before compiling:
