@@ -17,51 +17,41 @@ limitations under the License.
 
 #include "app_camera_esp.h"
 #include "esp_camera.h"
-#include "main_functions.h"
 
 #include "detection_responder.h"
 #include "image_provider.h"
-
+#include "main_functions.h"
 #include "model_settings.h"
-#include "person_detect_model_data.h"
 
 #include <TFLIteMicro.h>
 #include <utility.h>
 
+#include "person_detect_model_data.h"
+
 #include "tensorflow/lite/micro/micro_interpreter.h"
+#include "tensorflow/lite/micro/micro_log.h"
 #include "tensorflow/lite/micro/micro_mutable_op_resolver.h"
+#include "tensorflow/lite/micro/system_setup.h"
 #include "tensorflow/lite/micro/kernels/micro_ops.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 
-#include "freertos/FreeRTOS.h"
+/* #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 
 #include <esp_timer.h>
 #include <esp_log.h>
-#include "esp_main.h"
+#include "esp_main.h" */
 
-// Globals
+// Globals, used for compatibility with Arduino-style sketches.
 namespace {
 const tflite::Model* model = nullptr;
 tflite::MicroInterpreter* interpreter = nullptr;
 TfLiteTensor* input = nullptr;
 
-// In order to use optimized tensorflow lite kernels, a signed int8_t quantized
-// model is preferred over the legacy unsigned model format. This means that
-// throughout this project, input images must be converted from unisgned to
-// signed format. The easiest and quickest way to convert from unsigned to
-// signed 8-bit integers is to subtract 128 from the unsigned value to get a
-// signed value.
-
-#ifdef CONFIG_IDF_TARGET_ESP32S3
-constexpr int scratchBufSize = 70 * 1024;
-#else
-constexpr int scratchBufSize = 0;
-#endif
 // An area of memory to use for input, output, and intermediate arrays.
-constexpr int kTensorArenaSize = 81 * 1024 + scratchBufSize;
-
-static uint8_t *tensor_arena;//[kTensorArenaSize]; // Maybe we should move this to external
+constexpr int kTensorArenaSize = 136 * 1024;
+// Keep aligned to 16 bytes for CMSIS
+alignas(16) uint8_t tensor_arena[kTensorArenaSize];
 }  // namespace
 
 void init_wifi() {
@@ -100,21 +90,14 @@ void setup() {
   init_wifi();          // WiFi connect
   startCameraServer(); // WebServer start
 
+  tflite::InitializeTarget();
+
   // Map the model into a usable data structure. This doesn't involve any
   // copying or parsing, it's a very lightweight operation.
   model = tflite::GetModel(g_person_detect_model_data);
   if (model->version() != TFLITE_SCHEMA_VERSION) {
     Serial.printf("Model provided is schema version %d not equal to supported version %d.\n",
                   model->version(), TFLITE_SCHEMA_VERSION);
-    return;
-  }
-
-  // Allocate tensor arena
-  if (tensor_arena == NULL) {
-    tensor_arena = (uint8_t *) heap_caps_malloc(kTensorArenaSize, MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
-  }
-  if (tensor_arena == NULL) {
-    Serial.printf("Couldn't allocate memory of %d bytes\n", kTensorArenaSize);
     return;
   }
 
@@ -126,14 +109,16 @@ void setup() {
   micro_op_resolver.AddReshape();
   micro_op_resolver.AddSoftmax();
 
-  // Build interpreter
-  static tflite::MicroInterpreter static_interpreter(model, micro_op_resolver, tensor_arena, kTensorArenaSize);
+  // Build an interpreter to run the model with.
+  // NOLINTNEXTLINE(runtime-global-variables)
+  static tflite::MicroInterpreter static_interpreter(
+      model, micro_op_resolver, tensor_arena, kTensorArenaSize);
   interpreter = &static_interpreter;
 
   // Allocate memory from the tensor_arena for the model's tensors.
   TfLiteStatus allocate_status = interpreter->AllocateTensors();
   if (allocate_status != kTfLiteOk) {
-    Serial.println("AllocateTensors() failed");
+    MicroPrintf("AllocateTensors() failed");
     return;
   }
 
@@ -143,35 +128,31 @@ void setup() {
 
 // The name of this function is important for Arduino compatibility.
 void loop() {
-  // Get image from provider
-  TfLiteStatus status = GetImage(kNumCols, kNumRows, kNumChannels, input->data.int8);
-
-  if (status != kTfLiteOk) {
-    Serial.println("Image capture failed, skipping this frame.");
-    vTaskDelay(50);
-    return;
+  // Get image from provider.
+  if (kTfLiteOk != GetImage(input)) {
+    MicroPrintf("Image capture failed.");
   }
 
-  // Run inference on the captured image
-  if (interpreter->Invoke() != kTfLiteOk) {
-    Serial.println("Inference failed on this frame.");
-    vTaskDelay(50);
-    return;
+  // Run the model on this input and make sure it succeeds.
+  if (kTfLiteOk != interpreter->Invoke()) {
+    MicroPrintf("Invoke failed.");
   }
 
   TfLiteTensor* output = interpreter->output(0);
 
-  // Get scores
+  // Process the inference results.
   int8_t person_score = output->data.uint8[kPersonIndex];
   int8_t no_person_score = output->data.uint8[kNotAPersonIndex];
 
-  float person_score_f = (person_score - output->params.zero_point) * output->params.scale;
-  float no_person_score_f = (no_person_score - output->params.zero_point) * output->params.scale;
+  float person_score_f =
+      (person_score - output->params.zero_point) * output->params.scale;
+  float no_person_score_f =
+      (no_person_score - output->params.zero_point) * output->params.scale;
+
 
   // Respond to detection (LCD / Serial)
   RespondToDetection(person_score_f, no_person_score_f);
   vTaskDelay(100); // 100 ms delay to avoid watchdog
-
 }
 
 
