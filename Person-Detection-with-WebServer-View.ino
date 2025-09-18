@@ -81,7 +81,7 @@ void setup() {
   delay(500);
 
   // Camera init via wrapper
-  if (InitCamera() != kTfLiteOk) {
+  if (app_camera_init() != kTfLiteOk) {
       Serial.println("Camera initialization failed! Halting...");
       while (true) { vTaskDelay(1000); }
   }
