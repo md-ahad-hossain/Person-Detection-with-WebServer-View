@@ -78,7 +78,7 @@ void setup() {
   Serial.begin(115200);
   Serial.setDebugOutput(true);
   Serial.println();
-  delay(1000);
+  delay(500);
 
   // Camera init via wrapper
   if (InitCamera() != kTfLiteOk) {
@@ -86,7 +86,6 @@ void setup() {
       while (true) { vTaskDelay(1000); }
   }
 
-  setupAlarmPin();       // এলার্ম পিন ইনিশিয়ালাইজ  
   init_wifi();          // WiFi connect
   startCameraServer(); // WebServer start
 
