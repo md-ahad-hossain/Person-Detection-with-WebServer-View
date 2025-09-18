@@ -19,10 +19,17 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_MICRO_EXAMPLES_PERSON_DETECTION_DETECTION_RESPONDER_H_
 #define TENSORFLOW_LITE_MICRO_EXAMPLES_PERSON_DETECTION_DETECTION_RESPONDER_H_
 
+#pragma once
+
 #include <Arduino.h>
 #include "tensorflow/lite/c/common.h"
 
-extern volatile bool g_person_detected;
+typedef struct {
+  bool detected;
+  int x, y, w, h;
+} detection_info_t;
+
+extern volatile detection_info_t g_detect_info;
 
 #define ALARM_PIN 2   // Alarm GPIO পিন
 
@@ -31,7 +38,6 @@ extern volatile bool g_person_detected;
 // no_person_score: confidence that no person is present (0.0 - 1.0)
 // ফাংশন declarations
 void RespondToDetection(float person_score, float no_person_score);
-void handleDetection(float person_score, float no_person_score);
 
 #endif  // TENSORFLOW_LITE_MICRO_EXAMPLES_PERSON_DETECTION_DETECTION_RESPONDER_H_
 
