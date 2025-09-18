@@ -16,23 +16,20 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_MICRO_EXAMPLES_PERSON_DETECTION_MODEL_SETTINGS_H_
 #define TENSORFLOW_LITE_MICRO_EXAMPLES_PERSON_DETECTION_MODEL_SETTINGS_H_
 
-// Model input image dimensions
+// Keeping these as constant expressions allow us to allocate fixed-sized arrays
+// on the stack for our working memory.
+
+// All of these values are derived from the values used during model training,
+// if you change your model you'll need to update these constants.
 constexpr int kNumCols = 96;
 constexpr int kNumRows = 96;
 constexpr int kNumChannels = 1;
 
-// Maximum image size
 constexpr int kMaxImageSize = kNumCols * kNumRows * kNumChannels;
 
-// Categories
 constexpr int kCategoryCount = 2;
 constexpr int kPersonIndex = 1;
 constexpr int kNotAPersonIndex = 0;
-
-// Category labels
-inline const char* kCategoryLabels[kCategoryCount] = {
-    "notperson",
-    "person",
-};
+extern const char* kCategoryLabels[kCategoryCount];
 
 #endif  // TENSORFLOW_LITE_MICRO_EXAMPLES_PERSON_DETECTION_MODEL_SETTINGS_H_
