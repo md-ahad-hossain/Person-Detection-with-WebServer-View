@@ -412,28 +412,30 @@ static esp_err_t cmd_handler(httpd_req_t *req) {
     res = s->set_ae_level(s, val);
   }
 #if defined(LED_GPIO_NUM)
-  else if (!strcmp(variable, "led_intensity")) {
-    led_duty = val;
-    if (isStreaming) enable_led(true);
-
-    res = 0;
+    else if (!strcmp(variable, "led_intensity")) {
+      led_duty = val;
+      if (isStreaming) enable_led(true);
+      res = 0;
+    }
 #else
-    res = -1;
+    else if (!strcmp(variable, "led_intensity")) {
+      // LED_GPIO_NUM ডিফাইন্ড না থাকলে সমর্থন নেই
+      res = -1;
+    }
 #endif
+
+    else {
+      log_i("Unknown command: %s", variable);
+      res = -1;
     }
 
-  else {
-    log_i("Unknown command: %s", variable);
-    res = -1;
-  }
+    if (res < 0) {
+      log_e("Failed to set %s to %d", variable, val);
+      return httpd_resp_send_500(req);
+    }
 
-  if (res < 0) {
-    log_e("Failed to set %s to %d", variable, val);
-    return httpd_resp_send_500(req);
-  }
-
-  httpd_resp_set_hdr(req, "Access-Control-Allow-Origin", "*");
-  return httpd_resp_send(req, NULL, 0);
+    httpd_resp_set_hdr(req, "Access-Control-Allow-Origin", "*");
+    return httpd_resp_send(req, NULL, 0);
 }
 
 static int print_reg(char *p, sensor_t *s, uint16_t reg, uint32_t mask) {
