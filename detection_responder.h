@@ -24,6 +24,13 @@ limitations under the License.
 #include "image_provider.h"
 #include "esp_main.h"
 #include "esp_log.h"
+#include <stdbool.h>
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+extern volatile bool g_person_detected;
 
 #define ALARM_PIN 2   // Alarm GPIO পিন
 
@@ -36,6 +43,9 @@ inline void setupAlarmPin() {
 inline void RespondToDetection(float person_score, float no_person_score) {
     bool person_detected = (person_score >= 0.6f); // Threshold 60%
 
+    // গ্লোবাল ফ্ল্যাগ আপডেট
+    g_person_detected = person_detected;
+
     // GPIO Alarm trigger
     digitalWrite(ALARM_PIN, person_detected ? HIGH : LOW);
 
@@ -46,6 +56,10 @@ inline void RespondToDetection(float person_score, float no_person_score) {
 inline void handleDetection(float person_score, float no_person_score) {
     RespondToDetection(person_score, no_person_score);
 }
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif  // TENSORFLOW_LITE_MICRO_EXAMPLES_PERSON_DETECTION_DETECTION_RESPONDER_H_
 
