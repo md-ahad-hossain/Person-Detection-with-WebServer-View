@@ -14,12 +14,15 @@
 #include "esp_http_server.h"
 #include "esp_timer.h"
 #include "esp_camera.h"
+#include "detection_responder.h"
 #include "img_converters.h"
 #include "fb_gfx.h"
 #include "esp32-hal-ledc.h"
 #include "sdkconfig.h"
 #include "camera_index.h"
 #include "app_camera_esp.h"
+
+volatile bool g_person_detected = false;  // ডিফল্ট false
 
 #if defined(ARDUINO_ARCH_ESP32) && defined(CONFIG_ARDUHAL_ESP_LOG)
 #include "esp32-hal-log.h"
@@ -205,13 +208,24 @@ static esp_err_t capture_handler(httpd_req_t *req) {
   return res;
 }
 
+// ------------------------- Person Detection Endpoint -------------------------
+static esp_err_t person_detect_handler(httpd_req_t *req) {
+  char buf[16];
+  int val = 0;
+  if (httpd_req_get_url_query_str(req, buf, sizeof(buf)) == ESP_OK) {
+    if (httpd_query_key_value(buf, "detected", buf, sizeof(buf)) == ESP_OK) {
+      val = atoi(buf);
+    }
+  }
+  g_person_detected = (val != 0);
+  httpd_resp_set_hdr(req, "Access-Control-Allow-Origin", "*");
+  return httpd_resp_send(req, NULL, 0);
+}
+
 static esp_err_t stream_handler(httpd_req_t *req) {
   camera_fb_t *fb = NULL;
   struct timeval _timestamp;
   esp_err_t res = ESP_OK;
-  size_t _jpg_buf_len = 0;
-  uint8_t *_jpg_buf = NULL;
-  char *part_buf[128];
 
   static int64_t last_frame = 0;
   if (!last_frame) {
@@ -236,44 +250,49 @@ static esp_err_t stream_handler(httpd_req_t *req) {
     if (!fb) {
       log_e("Camera capture failed");
       res = ESP_FAIL;
+      break;
     } else {
-      _timestamp.tv_sec = fb->timestamp.tv_sec;
-      _timestamp.tv_usec = fb->timestamp.tv_usec;
+      
+      // Person overlay for RGB565
+      if (fb->format == PIXFORMAT_RGB565 && g_person_detected) {
+        fb_data_t *gfx_fb = (fb_data_t *)fb->buf;
+        fb_gfx_text(gfx_fb, fb->width / 2 - 20, fb->height / 2, "PERSON", 0xFFFF); // white
+      }
+
+      uint8_t *jpg_buf = NULL;
+      size_t jpg_len = 0;
+
       if (fb->format != PIXFORMAT_JPEG) {
-        bool jpeg_converted = frame2jpg(fb, 80, &_jpg_buf, &_jpg_buf_len);
-        esp_camera_fb_return(fb);
-        fb = NULL;
-        if (!jpeg_converted) {
-          log_e("JPEG compression failed");
+        if (!frame2jpg(fb, 80, &jpg_buf, &jpg_len)) {
+          esp_camera_fb_return(fb);
+          log_e("JPEG conversion failed");
           res = ESP_FAIL;
+          break;
         }
       } else {
-        _jpg_buf_len = fb->len;
-        _jpg_buf = fb->buf;
+        jpg_buf = fb->buf;
+        jpg_len = fb->len;
       }
-    }
-    if (res == ESP_OK) {
-      res = httpd_resp_send_chunk(req, _STREAM_BOUNDARY, strlen(_STREAM_BOUNDARY));
-    }
-    if (res == ESP_OK) {
-      size_t hlen = snprintf((char *)part_buf, 128, _STREAM_PART, _jpg_buf_len, _timestamp.tv_sec, _timestamp.tv_usec);
-      res = httpd_resp_send_chunk(req, (const char *)part_buf, hlen);
-    }
-    if (res == ESP_OK) {
-      res = httpd_resp_send_chunk(req, (const char *)_jpg_buf, _jpg_buf_len);
-    }
-    if (fb) {
+
+      if (res == ESP_OK) {
+        res = httpd_resp_send_chunk(req, _STREAM_BOUNDARY, strlen(_STREAM_BOUNDARY));
+        
+        if (res == ESP_OK) {
+          char header[128];
+          size_t hlen = snprintf(header, 128, _STREAM_PART, jpg_len, fb->timestamp.tv_sec, fb->timestamp.tv_usec);
+          res = httpd_resp_send_chunk(req, header, hlen);
+        }
+        if (res == ESP_OK) {
+          res = httpd_resp_send_chunk(req, (const char *)jpg_buf, jpg_len);
+        }
+      }
+
       esp_camera_fb_return(fb);
-      fb = NULL;
-      _jpg_buf = NULL;
-    } else if (_jpg_buf) {
-      free(_jpg_buf);
-      _jpg_buf = NULL;
+      if (fb->format != PIXFORMAT_JPEG && jpg_buf) free(jpg_buf);
     }
-    if (res != ESP_OK) {
-      log_e("Send frame failed");
-      break;
-    }
+
+    if (res != ESP_OK) break;
+
     int64_t fr_end = esp_timer_get_time();
 
     int64_t frame_time = fr_end - last_frame;
@@ -326,18 +345,21 @@ static esp_err_t cmd_handler(httpd_req_t *req) {
   if (parse_get(req, &buf) != ESP_OK) {
     return ESP_FAIL;
   }
-  if (httpd_query_key_value(buf, "var", variable, sizeof(variable)) != ESP_OK || httpd_query_key_value(buf, "val", value, sizeof(value)) != ESP_OK) {
-    free(buf);
-    httpd_resp_send_404(req);
-    return ESP_FAIL;
+  if (httpd_query_key_value(buf, "var", variable, sizeof(variable)) != ESP_OK ||
+      httpd_query_key_value(buf, "val", value, sizeof(value)) != ESP_OK) {
+      free(buf);
+      httpd_resp_send_404(req);
+      return ESP_FAIL;
   }
+
   free(buf);
 
   int val = atoi(value);
-  log_i("%s = %d", variable, val);
+  log_i("Command received: %s = %d", variable, val);
   sensor_t *s = esp_camera_sensor_get();
-  int res = 0;
+  int res = -1;
 
+  // Camera settings
   if (!strcmp(variable, "framesize")) {
     if (s->pixformat == PIXFORMAT_JPEG) {
       res = s->set_framesize(s, (framesize_t)val);
@@ -392,17 +414,21 @@ static esp_err_t cmd_handler(httpd_req_t *req) {
 #if defined(LED_GPIO_NUM)
   else if (!strcmp(variable, "led_intensity")) {
     led_duty = val;
-    if (isStreaming) {
-      enable_led(true);
-    }
-  }
+    if (isStreaming) enable_led(true);
+
+    res = 0;
+#else
+    res = -1;
 #endif
+    }
+
   else {
     log_i("Unknown command: %s", variable);
     res = -1;
   }
 
   if (res < 0) {
+    log_e("Failed to set %s to %d", variable, val);
     return httpd_resp_send_500(req);
   }
 
