@@ -16,7 +16,11 @@
 #include "esp_camera.h"
 #include "detection_responder.h"
 #include "img_converters.h"
+
 #include "fb_gfx.h"
+#include "fd_forward.h"
+#include "fr_forward.h"
+
 #include "esp32-hal-ledc.h"
 #include "sdkconfig.h"
 #include "camera_index.h"
@@ -223,97 +227,108 @@ static esp_err_t person_detect_handler(httpd_req_t *req) {
 }
 
 static esp_err_t stream_handler(httpd_req_t *req) {
-  camera_fb_t *fb = NULL;
-  struct timeval _timestamp;
-  esp_err_t res = ESP_OK;
+    camera_fb_t *fb = NULL;
+    esp_err_t res = ESP_OK;
 
-  static int64_t last_frame = 0;
-  if (!last_frame) {
-    last_frame = esp_timer_get_time();
-  }
-
-  res = httpd_resp_set_type(req, _STREAM_CONTENT_TYPE);
-  if (res != ESP_OK) {
-    return res;
-  }
-
-  httpd_resp_set_hdr(req, "Access-Control-Allow-Origin", "*");
-  httpd_resp_set_hdr(req, "X-Framerate", "60");
-
-#if defined(LED_GPIO_NUM)
-  isStreaming = true;
-  enable_led(true);
-#endif
-
-  while (true) {
-    fb = esp_camera_fb_get();
-    if (!fb) {
-      log_e("Camera capture failed");
-      res = ESP_FAIL;
-      break;
-    } else {
-      
-      // Person overlay for RGB565
-      if (fb->format == PIXFORMAT_RGB565 && g_person_detected) {
-        fb_data_t *gfx_fb = (fb_data_t *)fb->buf;
-        fb_gfx_text(gfx_fb, fb->width / 2 - 20, fb->height / 2, "PERSON", 0xFFFF); // white
-      }
-
-      uint8_t *jpg_buf = NULL;
-      size_t jpg_len = 0;
-
-      if (fb->format != PIXFORMAT_JPEG) {
-        if (!frame2jpg(fb, 80, &jpg_buf, &jpg_len)) {
-          esp_camera_fb_return(fb);
-          log_e("JPEG conversion failed");
-          res = ESP_FAIL;
-          break;
-        }
-      } else {
-        jpg_buf = fb->buf;
-        jpg_len = fb->len;
-      }
-
-      if (res == ESP_OK) {
-        res = httpd_resp_send_chunk(req, _STREAM_BOUNDARY, strlen(_STREAM_BOUNDARY));
-        
-        if (res == ESP_OK) {
-          char header[128];
-          size_t hlen = snprintf(header, 128, _STREAM_PART, jpg_len, fb->timestamp.tv_sec, fb->timestamp.tv_usec);
-          res = httpd_resp_send_chunk(req, header, hlen);
-        }
-        if (res == ESP_OK) {
-          res = httpd_resp_send_chunk(req, (const char *)jpg_buf, jpg_len);
-        }
-      }
-
-      esp_camera_fb_return(fb);
-      if (fb->format != PIXFORMAT_JPEG && jpg_buf) free(jpg_buf);
+    static int64_t last_frame = 0;
+    if (!last_frame) {
+        last_frame = esp_timer_get_time();
     }
 
-    if (res != ESP_OK) break;
+    res = httpd_resp_set_type(req, _STREAM_CONTENT_TYPE);
+    if (res != ESP_OK) {
+        return res;
+    }
 
-    int64_t fr_end = esp_timer_get_time();
-
-    int64_t frame_time = fr_end - last_frame;
-    last_frame = fr_end;
-
-    frame_time /= 1000;
-#if ARDUHAL_LOG_LEVEL >= ARDUHAL_LOG_LEVEL_INFO
-    uint32_t avg_frame_time = ra_filter_run(&ra_filter, frame_time);
-#endif
-    log_i(
-      "MJPG: %uB %ums (%.1ffps), AVG: %ums (%.1ffps)", (uint32_t)(_jpg_buf_len), (uint32_t)frame_time, 1000.0 / (uint32_t)frame_time, avg_frame_time,
-      1000.0 / avg_frame_time
-    );
-  }
+    httpd_resp_set_hdr(req, "Access-Control-Allow-Origin", "*");
+    httpd_resp_set_hdr(req, "X-Framerate", "60");
 
 #if defined(LED_GPIO_NUM)
-  isStreaming = false;
-  enable_led(false);
+    isStreaming = true;
+    enable_led(true);
 #endif
 
-  return res;
+    while (true) {
+        fb = esp_camera_fb_get();
+        if (!fb) {
+            log_e("Camera capture failed");
+            res = ESP_FAIL;
+            break;
+        } else {
+            // ---------------------- এখানে Overlay হবে ----------------------
+            if (fb->format == PIXFORMAT_RGB565 && g_person_detected) {
+                fb_data_t rfb;
+                rfb.width = fb->width;
+                rfb.height = fb->height;
+                rfb.data = fb->buf;
+                rfb.bytes_per_pixel = 2; // RGB565
+                rfb.format = FB_RGB565;
+
+                // লাল rectangle আঁকা
+                int x = fb->width / 4;
+                int y = fb->height / 4;
+                int w = fb->width / 2;
+                int h = fb->height / 2;
+                fb_gfx_drawRect(&rfb, x, y, w, h, 0xF800); // লাল
+
+                // সাদা টেক্সট আঁকা
+                fb_gfx_print(&rfb, x + 10, y - 10, "PERSON", 0xFFFF);
+            }
+            // ---------------------------------------------------------------
+
+            uint8_t *jpg_buf = NULL;
+            size_t jpg_len = 0;
+
+            if (fb->format != PIXFORMAT_JPEG) {
+                if (!frame2jpg(fb, 80, &jpg_buf, &jpg_len)) {
+                    esp_camera_fb_return(fb);
+                    log_e("JPEG conversion failed");
+                    res = ESP_FAIL;
+                    break;
+                }
+            } else {
+                jpg_buf = fb->buf;
+                jpg_len = fb->len;
+            }
+
+            if (res == ESP_OK) {
+                res = httpd_resp_send_chunk(req, _STREAM_BOUNDARY, strlen(_STREAM_BOUNDARY));
+                
+                if (res == ESP_OK) {
+                    char header[128];
+                    size_t hlen = snprintf(header, 128, _STREAM_PART,
+                                           jpg_len, fb->timestamp.tv_sec, fb->timestamp.tv_usec);
+                    res = httpd_resp_send_chunk(req, header, hlen);
+                }
+                if (res == ESP_OK) {
+                    res = httpd_resp_send_chunk(req, (const char *)jpg_buf, jpg_len);
+                }
+            }
+
+            esp_camera_fb_return(fb);
+            if (fb->format != PIXFORMAT_JPEG && jpg_buf) free(jpg_buf);
+        }
+
+        if (res != ESP_OK) break;
+
+        int64_t fr_end = esp_timer_get_time();
+        int64_t frame_time = (fr_end - last_frame) / 1000;
+        last_frame = fr_end;
+
+#if ARDUHAL_LOG_LEVEL >= ARDUHAL_LOG_LEVEL_INFO
+        uint32_t avg_frame_time = ra_filter_run(&ra_filter, frame_time);
+        log_i("MJPG: %uB %ums (%.1ffps), AVG: %ums (%.1ffps)",
+              (uint32_t)(jpg_len), (uint32_t)frame_time, 1000.0 / (uint32_t)frame_time,
+              avg_frame_time, 1000.0 / avg_frame_time);
+#endif
+    }
+
+#if defined(LED_GPIO_NUM)
+    isStreaming = false;
+    enable_led(false);
+#endif
+
+    return res;
 }
 
 static esp_err_t parse_get(httpd_req_t *req, char **obuf) {
