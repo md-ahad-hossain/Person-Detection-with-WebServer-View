@@ -17,10 +17,6 @@
 #include "detection_responder.h"
 #include "img_converters.h"
 
-#include "fb_gfx.h"
-#include "fd_forward.h"
-#include "fr_forward.h"
-
 #include "esp32-hal-ledc.h"
 #include "sdkconfig.h"
 #include "camera_index.h"
@@ -263,18 +259,6 @@ static esp_err_t stream_handler(httpd_req_t *req) {
                 rfb.data = fb->buf;
                 rfb.bytes_per_pixel = 2; // RGB565
                 rfb.format = FB_RGB565;
-
-                // লাল rectangle আঁকা
-                int x = fb->width / 4;
-                int y = fb->height / 4;
-                int w = fb->width / 2;
-                int h = fb->height / 2;
-                fb_gfx_drawRect(&rfb, x, y, w, h, 0xF800); // লাল
-
-                // সাদা টেক্সট আঁকা
-                fb_gfx_print(&rfb, x + 10, y - 10, "PERSON", 0xFFFF);
-            }
-            // ---------------------------------------------------------------
 
             uint8_t *jpg_buf = NULL;
             size_t jpg_len = 0;
