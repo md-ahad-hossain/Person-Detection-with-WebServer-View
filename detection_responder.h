@@ -21,45 +21,18 @@ limitations under the License.
 
 #include <Arduino.h>
 #include "tensorflow/lite/c/common.h"
-#include "image_provider.h"
-#include "esp_main.h"
-#include "esp_log.h"
-#include <stdbool.h>
-
-#ifdef __cplusplus
-extern "C" {
-#endif
 
 extern volatile bool g_person_detected;
 
 #define ALARM_PIN 2   // Alarm GPIO পিন
 
-// GPIO পিন ইনিশিয়ালাইজ
-inline void setupAlarmPin() {
-  pinMode(ALARM_PIN, OUTPUT);
-  digitalWrite(ALARM_PIN, LOW);
-}
-
-inline void RespondToDetection(float person_score, float no_person_score) {
-    bool person_detected = (person_score >= 0.6f); // Threshold 60%
-
-    // গ্লোবাল ফ্ল্যাগ আপডেট
-    g_person_detected = person_detected;
-
-    // GPIO Alarm trigger
-    digitalWrite(ALARM_PIN, person_detected ? HIGH : LOW);
-
-    ESP_LOGI(TAG, "Person score: %.2f, Detected: %s", person_score, person_detected ? "YES" : "NO");
-}
-
-// মূল ডিটেকশন লুপ বা ফ্রেম প্রক্রিয়াকরণে কল করবে
-inline void handleDetection(float person_score, float no_person_score) {
-    RespondToDetection(person_score, no_person_score);
-}
-
-#ifdef __cplusplus
-}
-#endif
+// Called every time the results of a person detection run are available.
+// person_score: confidence that a person is present (0.0 - 1.0)
+// no_person_score: confidence that no person is present (0.0 - 1.0)
+// ফাংশন declarations
+void RespondToDetection(float person_score, float no_person_score);
+void handleDetection(float person_score, float no_person_score);
 
 #endif  // TENSORFLOW_LITE_MICRO_EXAMPLES_PERSON_DETECTION_DETECTION_RESPONDER_H_
+
 
